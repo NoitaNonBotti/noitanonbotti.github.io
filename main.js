@@ -1,187 +1,300 @@
 import * as THREE from 'three';
 
-import { add } from './test.js';
+const container = document.getElementById("container");
 
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { RectAreaLightHelper } from 'three/addons/helpers/RectAreaLightHelper.js';
-import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
-import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-import Stats from 'three/addons/libs/stats.module.js';
-
-const renderer = new THREE.WebGLRenderer();
-renderer.setPixelRatio( window.devicePixelRatio );
-renderer.setSize( window.innerWidth, window.innerHeight );
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.9;
-document.body.appendChild( renderer.domElement );
-
-const file_loader = new THREE.FileLoader();
-
-const clock = new THREE.Clock();
-
-const stats_ui = new Stats();
-const container = document.getElementById( 'container' );
-container.appendChild( stats_ui.dom );
-
-// scene definition
 const scene = new THREE.Scene();
-scene.background = new THREE.Color( 0x000000 );
-const ambient_light = new THREE.AmbientLight( 0xffffff, 0.1 );
-scene.add(ambient_light);
 
-// lights
-const pt_light = new THREE.PointLight( 0xAA8899, 1, 0, 0 );
-pt_light.position.set( 0, 20, 25 );
-scene.add( pt_light );
+const camera = new THREE.PerspectiveCamera(
+    60,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    200
+);
+camera.position.set(0, 0, 8);
 
-const pt_light_helper = new THREE.PointLightHelper( pt_light, 1.0);
-scene.add( pt_light_helper );
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.domElement.style.position = "fixed";
+renderer.domElement.style.top = "0";
+renderer.domElement.style.left = "0";
+renderer.domElement.style.zIndex = "0";
+container.appendChild(renderer.domElement);
 
-const PI = 3.1415926535;
-const DEG2RAD = PI / 180.0;
+// ---------- Background Shader ----------
 
-RectAreaLightUniformsLib.init();
+const bgMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        uTime: { value: 0 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main(){
+            vUv = uv;
+            gl_Position = vec4(position,1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform float uTime;
+        varying vec2 vUv;
 
-const rect_light1 = new THREE.RectAreaLight( 0xff0000, 5, 4, 10 );
-rect_light1.position.set( -5, 6, -7 );
-rect_light1.rotateY(PI);
-scene.add( rect_light1 );
+        float noise(vec2 p){
+            return sin(p.x)*sin(p.y);
+        }
 
-const rect_light2 = new THREE.RectAreaLight( 0x00ff00, 5, 4, 10 );
-rect_light2.position.set( 0, 6, -7 );
-rect_light2.rotateY(PI + 1);
-scene.add( rect_light2 );
+        vec3 palette(float t){
+            vec3 a = vec3(0.03,0.04,0.08);
+            vec3 b = vec3(0.08,0.05,0.18);
+            vec3 c = vec3(0.15,0.08,0.28);
+            vec3 d = vec3(0.05,0.18,0.35);
+            return mix(
+                mix(a,b,sin(t)*0.5+0.5),
+                mix(c,d,cos(t*0.7)*0.5+0.5),
+                0.5
+            );
+        }
 
-const rect_light3 = new THREE.RectAreaLight( 0x0000ff, 5, 4, 10 );
-rect_light3.position.set( 5, 6, -7 );
-rect_light3.rotateY(PI + 2);
-scene.add( rect_light3 );
+        void main(){
+            vec2 uv = vUv * 2.0 - 1.0;
+            float t = uTime * 0.15;
 
-scene.add( new RectAreaLightHelper( rect_light1 ) );
-scene.add( new RectAreaLightHelper( rect_light2 ) );
-scene.add( new RectAreaLightHelper( rect_light3 ) );
+            float n = noise(uv*4.0 + t) + noise(uv*6.0 - t*1.3);
+            n *= 0.5;
 
-const camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 1000 );
-camera.position.set( 0, 0, 20 );
-camera.lookAt( 0, 0, 0 );
+            float radial = length(uv);
+            float vignette = smoothstep(1.2,0.2,radial);
 
-const controls = new OrbitControls( camera, renderer.domElement );
-controls.target.set( 0, 0.5, 0 );
-controls.update();
-controls.enablePan = false;
-controls.enableDamping = true;
+            vec3 col = palette(n + t);
+            col *= vignette;
 
-const floor_geo = new THREE.BoxGeometry( 2000, 0.1, 2000 );
-const floor_mat = new THREE.MeshStandardMaterial( { color: 0x444444 } );
-floor_mat.roughnessMap = createCheckerTexture( 400 );
-const floor_mesh = new THREE.Mesh( floor_geo, floor_mat );
-floor_mesh.position.y = -6;
-scene.add( floor_mesh );
+            gl_FragColor = vec4(col,1.0);
+        }
+    `,
+    depthWrite: false
+});
 
+const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2,2), bgMaterial);
+bgMesh.frustumCulled = false;
+scene.add(bgMesh);
 
-const mat = new THREE.MeshStandardMaterial( { color: 0xffffff, roughness: 0, metalness: 0 } );
-mat.fog = true;
+// ---------- Lighting ----------
 
-const torus_knot_geo = new THREE.TorusKnotGeometry( 3, 1, 100, 16 ).toNonIndexed();
-const torus_knot = new THREE.Mesh( torus_knot_geo, mat );
+const ambient = new THREE.AmbientLight(0x1c2545, 0.7);
+scene.add(ambient);
 
-scene.add( torus_knot );
+const key = new THREE.DirectionalLight(0xffffff, 1.1);
+key.position.set(5,5,5);
+scene.add(key);
 
-const shader_plane_geo = new THREE.PlaneGeometry( 88.8976, 50 );
+const rim = new THREE.DirectionalLight(0x445bff, 1.0);
+rim.position.set(-5,-2,-5);
+scene.add(rim);
 
-let uniforms = {
-    'iTime': { value: 1.0 },
-    'iMouse': { value: new THREE.Vector2(70, 0) }
-};
+// ---------- Hero ----------
 
-const vert_shader_src = await file_loader.loadAsync( '/public/shaders/vert_shader.vert' );
-const frag_shader_src = await file_loader.loadAsync( '/public/shaders/frag_shader.frag' );
+const hero = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.5,3),
+    new THREE.MeshStandardMaterial({
+        color: 0x1e2240,
+        metalness: 0.9,
+        roughness: 0.25,
+        emissive: 0x3a4bff,
+        emissiveIntensity: 0.25
+    })
+);
+scene.add(hero);
 
-const blackhole_shader_mat = new THREE.ShaderMaterial( {
-    uniforms: uniforms,
-    vertexShader: vert_shader_src,
-    fragmentShader: frag_shader_src,
-} );
+// ---------- Objects ----------
 
-const shader_plane = new THREE.Mesh(shader_plane_geo, blackhole_shader_mat);
+const objects = [];
+const geometries = [
+    new THREE.BoxGeometry(1,1,1,6,6,6),
+    new THREE.TorusGeometry(0.8,0.25,32,64),
+    new THREE.ConeGeometry(0.8,1.6,64)
+];
 
-shader_plane.position.set(0, 25, -20);
+const palette = [
+    0x3f51b5,
+    0x5c6bc0,
+    0x3949ab,
+    0x6a1b9a,
+    0x283593
+];
 
-scene.add(shader_plane);
+const sections = 4;
+const sectionSpacing = 12;
 
-const gltf_loader = new GLTFLoader();
-gltf_loader.load("models/small_city/scene.gltf", (gltf) => {
-    scene.add(gltf.scene);
-    gltf.scene.position.set(4.5, 0, 25);
-    gltf.scene.scale.set(0.01, 0.01, 0.01);
-    console.log(gltf.scene);
-})
+for(let s=0; s<sections; s++){
+    for(let i=0;i<6;i++){
 
-const gui = new GUI();
-const folder_scene = gui.addFolder( 'Scene' );
-folder_scene.add(ambient_light, 'intensity', 0, 1, 0.1);
-folder_scene.open();
+        const color = palette[(i+s)%palette.length];
 
-const folder_shader = gui.addFolder( 'Shader' );
-folder_shader.add(uniforms.iMouse.value, 'x', -50, 88.8976, 0.1);
-folder_shader.add(uniforms.iMouse.value, 'y', -50, 50, 0.1);
-folder_shader.open();
+        const mesh = new THREE.Mesh(
+            geometries[i%geometries.length],
+            new THREE.MeshStandardMaterial({
+                color: color,
+                metalness: 0.85,
+                roughness: 0.25,
+                emissive: color,
+                emissiveIntensity: 0.12
+            })
+        );
 
-const folder_tonemapping = gui.addFolder( 'Tonemapping' );
-folder_tonemapping.add(renderer, 'toneMappingExposure', 0.1, 1, 0.01);
-folder_tonemapping.open();
+        mesh.position.x = (Math.random()-0.5)*(10 + s*4);
+        mesh.position.y = -s*sectionSpacing + Math.random()*6;
+        mesh.position.z = (Math.random()-0.5)*14 - 5;
 
+        mesh.userData.baseY = mesh.position.y;
 
-window.addEventListener( 'resize', update_cam_renderer_aspect );
+        scene.add(mesh);
+        objects.push(mesh);
+    }
+}
 
-function update_cam_renderer_aspect() {
-    camera.aspect = window.innerWidth / window.innerHeight;
+// ---------- UI ----------
+
+document.body.style.margin="0";
+document.body.style.height=`${sections*100}vh`;
+document.body.style.fontFamily="Helvetica, Arial, sans-serif";
+document.body.style.color="#d6e2ff";
+document.body.style.background="transparent";
+
+const sectionsData = [
+    {id:"home",  title:"Noitanonbotti", content:"A Truly non vibe coding developer that creates this website for literally compliance" },
+    {id:"about", title:"About",         content:"I do not have any experience in anything what so ever."},
+];
+
+const wrapper=document.createElement("div");
+wrapper.style.position="relative";
+wrapper.style.zIndex="2";
+document.body.appendChild(wrapper);
+
+sectionsData.forEach(sec=>{
+    const div=document.createElement("section");
+    div.id=sec.id;
+    div.style.minHeight="100vh";
+    div.style.display="flex";
+    div.style.flexDirection="column";
+    div.style.justifyContent="center";
+    div.style.paddingLeft="15vw";
+    div.style.maxWidth="800px";
+    div.style.opacity="0";
+    div.style.transform="translateY(40px)";
+    div.style.transition="all 0.8s ease";
+
+    const h=document.createElement("h1");
+    h.innerText=sec.title;
+    h.style.fontSize="3rem";
+    h.style.color="#ffffff";
+
+    const p=document.createElement("p");
+    p.innerText=sec.content;
+    p.style.color="#9fb4ff";
+    p.style.fontSize="1.2rem";
+    p.style.lineHeight="1.6";
+
+    div.appendChild(h);
+    div.appendChild(p);
+    wrapper.appendChild(div);
+});
+
+// ---------- Tabs ----------
+
+const nav=document.createElement("div");
+nav.style.position="fixed";
+nav.style.right="40px";
+nav.style.top="50%";
+nav.style.transform="translateY(-50%)";
+nav.style.display="flex";
+nav.style.flexDirection="column";
+nav.style.gap="20px";
+nav.style.zIndex="3";
+document.body.appendChild(nav);
+
+let currentSection = 0;
+let targetCameraY = 0;
+
+function goToSection(index){
+    currentSection = THREE.MathUtils.clamp(index,0,sections-1);
+    targetCameraY = -currentSection*sectionSpacing;
+    document.getElementById(sectionsData[currentSection].id)
+        .scrollIntoView({behavior:"smooth"});
+}
+
+sectionsData.forEach((sec,index)=>{
+    const btn=document.createElement("button");
+    btn.innerText=sec.title;
+    btn.style.background="transparent";
+    btn.style.border="none";
+    btn.style.cursor="pointer";
+    btn.style.color="#6f83ff";
+    btn.style.fontSize="0.9rem";
+    btn.onclick=()=>goToSection(index);
+    nav.appendChild(btn);
+});
+
+// scroll wheel section snapping
+let wheelTimeout;
+window.addEventListener("wheel",e=>{
+    clearTimeout(wheelTimeout);
+    wheelTimeout = setTimeout(()=>{
+        if(e.deltaY>0) goToSection(currentSection+1);
+        else goToSection(currentSection-1);
+    },50);
+});
+
+// reveal
+window.addEventListener("scroll",()=>{
+    sectionsData.forEach(sec=>{
+        const el=document.getElementById(sec.id);
+        const rect=el.getBoundingClientRect();
+        if(rect.top<window.innerHeight*0.6){
+            el.style.opacity="1";
+            el.style.transform="translateY(0)";
+        }
+    });
+});
+
+const mouse={x:0,y:0};
+window.addEventListener("mousemove",e=>{
+    mouse.x=(e.clientX/window.innerWidth)*2-1;
+    mouse.y=-(e.clientY/window.innerHeight)*2+1;
+});
+
+window.addEventListener("resize",()=>{
+    camera.aspect=window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth,window.innerHeight);
+});
 
-    renderer.setSize( window.innerWidth, window.innerHeight );
+const clock=new THREE.Clock();
+
+function animate(){
+    const t=clock.getElapsedTime();
+
+    bgMaterial.uniforms.uTime.value=t;
+
+    hero.rotation.x=t*0.4;
+    hero.rotation.y=t*0.6;
+
+    camera.position.y += (targetCameraY - camera.position.y)*0.07;
+    camera.position.x += (mouse.x*2 - camera.position.x)*0.05;
+    camera.lookAt(0,camera.position.y,0);
+
+    const recycleThreshold = camera.position.y - sectionSpacing*1.2;
+
+    objects.forEach((o,i)=>{
+        o.rotation.x+=0.01;
+        o.rotation.y+=0.015;
+
+        o.position.y -= 0.02;
+
+        if(o.position.y < recycleThreshold){
+            o.position.y = camera.position.y + sectionSpacing*2 + Math.random()*5;
+        }
+    });
+
+    renderer.render(scene,camera);
 }
 
-function animate() {
-    const delta = 5 * clock.getDelta();
-
-    uniforms['iTime'].value += 0.2 * delta;
-
-    rect_light1.rotateY(0.01 * delta);
-    rect_light2.rotateY(0.01 * delta);
-    rect_light3.rotateY(0.01 * delta);
-
-    torus_knot.rotateX(0.01 * delta);
-    torus_knot.rotateY(0.015 * delta);
-
-    controls.update();
-    stats_ui.update();
-
-    renderer.render( scene, camera );
-}
-
-function createCheckerTexture( repeat = 1 ) {
-    const canvas = document.createElement( 'canvas' );
-    canvas.width = 2;
-    canvas.height = 2;
-
-    const ctx = canvas.getContext( '2d' );
-    ctx.fillStyle = '#000';
-    ctx.fillRect( 0, 0, 2, 2 );
-    ctx.fillStyle = '#fff';
-    ctx.fillRect( 0, 0, 1, 1 );
-    ctx.fillRect( 1, 1, 1, 1 );
-
-    const texture = new THREE.CanvasTexture( canvas );
-    texture.repeat.set( repeat, repeat );
-    texture.magFilter = THREE.NearestFilter;
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-
-    return texture;
-
-}
-
-renderer.setAnimationLoop( animate );
+renderer.setAnimationLoop(animate);
