@@ -21,61 +21,83 @@ renderer.domElement.style.left = "0";
 renderer.domElement.style.zIndex = "0";
 container.appendChild(renderer.domElement);
 
-// ---------- Background Shader ----------
+let scrollOffset = 0;
 
+// ---------- Voronoi Shadertoy Background ----------
 const bgMaterial = new THREE.ShaderMaterial({
     uniforms: {
-        uTime: { value: 0 }
+        uTime: { value: 0 },
+        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        uScroll: { value: 0 }
     },
     vertexShader: `
-        varying vec2 vUv;
-        void main(){
-            vUv = uv;
-            gl_Position = vec4(position,1.0);
-        }
-    `,
+varying vec2 vUv;
+void main() {
+vUv = uv;
+gl_Position = vec4(position,1.0);
+}
+`,
     fragmentShader: `
-        uniform float uTime;
-        varying vec2 vUv;
+uniform float uTime;
+uniform vec2 uResolution;
+uniform float uScroll;
+varying vec2 vUv;
 
-        float noise(vec2 p){
-            return sin(p.x)*sin(p.y);
-        }
+#define SIZE 30.0
+#define t uTime*2.0
 
-        vec3 palette(float t){
-            vec3 a = vec3(0.03,0.04,0.08);
-            vec3 b = vec3(0.08,0.05,0.18);
-            vec3 c = vec3(0.15,0.08,0.28);
-            vec3 d = vec3(0.05,0.18,0.35);
-            return mix(
-                mix(a,b,sin(t)*0.5+0.5),
-                mix(c,d,cos(t*0.7)*0.5+0.5),
-                0.5
-            );
-        }
+vec3 col1 = vec3(91.0,33.0,119.0)/255.0;
+vec3 col2 = vec3(47.0,107.0,175.0)/255.0;
 
-        void main(){
-            vec2 uv = vUv * 2.0 - 1.0;
-            float t = uTime * 0.15;
+vec2 ran(vec2 uv){
+uv *= vec2(dot(uv,vec2(127.1,311.7)), dot(uv,vec2(227.1,521.7)));
+return 1.0 - fract(tan(cos(uv)*123.6)*3533.3)*fract(tan(cos(uv)*123.6)*3533.3);
+}
 
-            float n = noise(uv*4.0 + t) + noise(uv*6.0 - t*1.3);
-            n *= 0.5;
+vec2 pt(vec2 id){
+return sin(t*(ran(id+0.5)-0.5) + ran(id-20.1)*8.0)*0.5;
+}
 
-            float radial = length(uv);
-            float vignette = smoothstep(1.2,0.2,radial);
+void main() {
+vec2 fragCoord = vUv * uResolution;
+vec2 uv = (fragCoord - 0.5*uResolution.xy)/uResolution.x;
 
-            vec3 col = palette(n + t);
-            col *= vignette;
+// Scroll offset
+vec2 off = vec2(uTime/50.0, uScroll/30.0);
+uv += off;
+uv *= SIZE;
 
-            gl_FragColor = vec4(col,1.0);
-        }
-    `,
+vec2 gv = fract(uv)-0.5;
+vec2 id = floor(uv);
+
+float mindist = 1e9;
+vec2 vorv;
+
+for(float i=-1.0;i<=1.0;i++){
+for(float j=-1.0;j<=1.0;j++){
+vec2 offv = vec2(i,j);
+float dist = length(gv + pt(id+offv) - offv);
+if(dist < mindist){
+mindist = dist;
+vorv = (id + pt(id+offv) + offv)/SIZE - off;
+}
+}
+}
+
+vec3 col = mix(col1, col2, clamp(vorv.x*2.2 + vorv.y, -1.0, 1.0)*0.5 + 0.5);
+gl_FragColor = vec4(col,1.0);
+}
+`,
     depthWrite: false
 });
 
 const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(2,2), bgMaterial);
 bgMesh.frustumCulled = false;
 scene.add(bgMesh);
+
+window.addEventListener('resize',()=>{
+    bgMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+});
 
 // ---------- Lighting ----------
 
@@ -89,20 +111,6 @@ scene.add(key);
 const rim = new THREE.DirectionalLight(0x445bff, 1.0);
 rim.position.set(-5,-2,-5);
 scene.add(rim);
-
-// ---------- Hero ----------
-
-const hero = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(1.5,3),
-    new THREE.MeshStandardMaterial({
-        color: 0x1e2240,
-        metalness: 0.9,
-        roughness: 0.25,
-        emissive: 0x3a4bff,
-        emissiveIntensity: 0.25
-    })
-);
-scene.add(hero);
 
 // ---------- Objects ----------
 
@@ -121,7 +129,7 @@ const palette = [
     0x283593
 ];
 
-const sections = 4;
+const sections = 2;
 const sectionSpacing = 12;
 
 for(let s=0; s<sections; s++){
@@ -144,8 +152,6 @@ for(let s=0; s<sections; s++){
         mesh.position.y = -s*sectionSpacing + Math.random()*6;
         mesh.position.z = (Math.random()-0.5)*14 - 5;
 
-        mesh.userData.baseY = mesh.position.y;
-
         scene.add(mesh);
         objects.push(mesh);
     }
@@ -159,7 +165,7 @@ document.body.style.fontFamily="Helvetica, Arial, sans-serif";
 document.body.style.color="#d6e2ff";
 document.body.style.background="transparent";
 
-const sectionsData = [
+const sectionsData=[
     {id:"home",  title:"Noitanonbotti", content:"A Truly non vibe coding developer that creates this website for literally compliance" },
     {id:"about", title:"About",         content:"I do not have any experience in anything what so ever."},
 ];
@@ -217,6 +223,9 @@ let targetCameraY = 0;
 function goToSection(index){
     currentSection = THREE.MathUtils.clamp(index,0,sections-1);
     targetCameraY = -currentSection*sectionSpacing;
+
+    scrollOffset = currentSection / sections;
+
     document.getElementById(sectionsData[currentSection].id)
         .scrollIntoView({behavior:"smooth"});
 }
@@ -227,23 +236,21 @@ sectionsData.forEach((sec,index)=>{
     btn.style.background="transparent";
     btn.style.border="none";
     btn.style.cursor="pointer";
-    btn.style.color="#6f83ff";
+    btn.style.color="#ffffff";
     btn.style.fontSize="0.9rem";
     btn.onclick=()=>goToSection(index);
     nav.appendChild(btn);
 });
 
-// scroll wheel section snapping
 let wheelTimeout;
 window.addEventListener("wheel",e=>{
     clearTimeout(wheelTimeout);
     wheelTimeout = setTimeout(()=>{
         if(e.deltaY>0) goToSection(currentSection+1);
-        else goToSection(currentSection-1);
+            else goToSection(currentSection-1);
     },50);
 });
 
-// reveal
 window.addEventListener("scroll",()=>{
     sectionsData.forEach(sec=>{
         const el=document.getElementById(sec.id);
@@ -265,6 +272,7 @@ window.addEventListener("resize",()=>{
     camera.aspect=window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth,window.innerHeight);
+    bgMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
 });
 
 const clock=new THREE.Clock();
@@ -272,10 +280,8 @@ const clock=new THREE.Clock();
 function animate(){
     const t=clock.getElapsedTime();
 
-    bgMaterial.uniforms.uTime.value=t;
-
-    hero.rotation.x=t*0.4;
-    hero.rotation.y=t*0.6;
+    bgMaterial.uniforms.uTime.value = t;
+    bgMaterial.uniforms.uScroll.value += (scrollOffset - bgMaterial.uniforms.uScroll.value)*0.05;
 
     camera.position.y += (targetCameraY - camera.position.y)*0.07;
     camera.position.x += (mouse.x*2 - camera.position.x)*0.05;
@@ -298,3 +304,4 @@ function animate(){
 }
 
 renderer.setAnimationLoop(animate);
+
