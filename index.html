@@ -3,7 +3,7 @@
 
     <head>
         <meta charset="utf-8">
-        <title>Website</title>
+        <title>My Not so Ultimate College Life Website</title>
         <style>
             body { margin: 0; }
 
@@ -16,7 +16,56 @@
                 display:block;
                 color: black;
             }
+
+            /* CSS */
+            .modern_btn {
+              appearance: button;
+              backface-visibility: hidden;
+              background-color: #ffffff;
+              border-radius: 6px;
+              border-width: 0;
+              box-shadow: rgba(50, 50, 93, .1) 0 0 0 1px inset,rgba(50, 50, 93, .1) 0 2px 5px 0,rgba(0, 0, 0, .07) 0 1px 1px 0;
+              box-sizing: border-box;
+              color: #000000;
+              cursor: pointer;
+              font-family: -apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif;
+              font-size: 70%;
+              height: 44px;
+              line-height: 1.15;
+              margin: 12px 0 0;
+              outline: none;
+              overflow: hidden;
+              max-width: 150px;
+              padding: 0 25px;
+              position: relative;
+              text-align: center;
+              text-transform: none;
+              transform: translateZ(0);
+              transition: all .2s,box-shadow .08s ease-in;
+              user-select: none;
+              -webkit-user-select: none;
+              touch-action: manipulation;
+              width: 100%;
+            }
+
+            .modern_btn:disabled {
+              cursor: default;
+            }
+
+            .modern_btn:focus {
+              box-shadow: rgba(50, 50, 93, .1) 0 0 0 1px inset, rgba(50, 50, 93, .2) 0 6px 15px 0, rgba(0, 0, 0, .1) 0 2px 2px 0, rgba(50, 151, 211, .3) 0 0 0 4px;
+            }
+
+            h1 {
+                color: #ffffff;
+            }
+
+            label {
+                color: white;
+            }
         </style>
+
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 
         <script type="importmap">
 {
@@ -26,10 +75,21 @@
   }
 }
         </script>
+
+        <script src="//cdn.jsdelivr.net/npm/simple-crypto-js@2.5.0/dist/SimpleCrypto.min.js"></script>
     </head>
 
     <body>
         <div id="container"></div>
+        <div id="info">
+            <h1>My Ultimate College Life Web Page</h1>
+            <div id="password_decryption_form">
+                <label>password for decryption:</label>
+                <input type="text" id="decrypt_password_input"></input>
+                <button class="modern_btn" id="submit_btn">Submit</button>
+            </div>
+        </div>
+
         <script type="module" src="/main.js"></script>
     </body>
 </html>
