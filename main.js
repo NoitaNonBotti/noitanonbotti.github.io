@@ -140,7 +140,7 @@ const sections_data = [
 const sections = sections_data.length;
 const section_spacing = 12;
 
-for(let s=0; s < sections; s++){
+for(let s=0; s < sections; s++) {
     for(let i=0;i<6;i++){
 
         const color = palette[(i+s)%palette.length];
@@ -323,7 +323,7 @@ function animate(){
 
 function decrypt_everything(key) {
     var crypt = new SimpleCrypto(key);
-    
+
     try {
         $(".section_content").text(function(idx, o_text) {
             return `${crypt.decrypt(o_text)}`;
